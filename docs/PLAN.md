@@ -22,6 +22,9 @@ A human approves every important step. AI agents **never** create Azure resource
 | Factory runtime | Local app, single user |
 | Factory stack | React (Vite + TypeScript) frontend, FastAPI backend |
 | Agent engine | **Claude Agent SDK (Python)**, which is Claude Code as a library, called from the FastAPI backend, using the Claude API directly |
+| Models | Chosen **per agent** to fit the work (see §5.1), not the strongest model everywhere. Configurable in the factory |
+| Approved docs | Approved specs, wireframes and plan reach `dev` as a `docs/...` PR that a human merges |
+| Pipeline credentials | Stored in the app repo's GitHub Actions settings (variables + secrets) by a human. Agents never see them |
 | Generated app stack | React (Vite + TypeScript) frontend, FastAPI backend |
 | Hosting of generated apps | Azure native: AKS, images in ACR |
 | Repos | One GitHub repo per generated app. The user creates the empty repo and gives its name to the factory |
@@ -197,7 +200,10 @@ Every gate has two outcomes: **Approve** or **Reject with feedback**. On rejecti
   2. Scan the images (e.g. Trivy).
   3. Push to ACR.
   4. Deploy to AKS.
-- The pipeline uses an Azure identity (GitHub OIDC federated credential) that a **human** creates via Terraform. AI agents never hold these credentials.
+- The pipeline authenticates to Azure using values a **human** adds to the repo's GitHub Actions settings:
+  - **Variables** (not sensitive): `AZURE_CLIENT_ID`, `AZURE_TENANT_ID`, `AZURE_SUBSCRIPTION_ID`, ACR name, AKS cluster name, resource group.
+  - **Secrets** (sensitive): only needed if a client secret is used. Preferred: GitHub OIDC federated credentials, so no password is stored at all.
+- The factory's report lists exactly which variables and secrets are required. AI agents never hold these credentials.
 
 **14. Human testing on `dev`**
 - The human tests using the Excel file and records the results.
@@ -268,6 +274,24 @@ New features re-enter at **stage 2** (or stage 4, if picked from the backlog):
 | Tester | 10 | Run Docker Compose and tests locally; file issues | Change app code |
 | UI/UX Tester | 10 | Drive the UI with Playwright; compare against wireframes; file issues | Change app code |
 | Security | 11 | Run scanners; file issues; mark PR security status | Change app code; dismiss its own findings |
+
+### 5.1 Model per agent (starting defaults, configurable)
+
+| Agent | Model | Why |
+|---|---|---|
+| Architect | Claude Opus 5.5 | Hardest reasoning: design, DB choice, auth and impact analysis |
+| Developer | Claude Opus 5.5 | Most code quality per task; fewer fix loops |
+| Product Analyst | Claude Sonnet 5.5 | Structured brainstorming |
+| QA (test author) | Claude Sonnet 5.5 | Turning acceptance criteria into tests |
+| UX Designer | Claude Sonnet 5.5 | HTML mockups |
+| Infra (tfvars) | Claude Sonnet 5.5 | Mapping the spec to module inputs |
+| Planner | Claude Sonnet 5.5 | Dependency ordering and the manifest |
+| Security | Claude Sonnet 5.5 | Interpreting scanner output and judging severity |
+| UI/UX Tester | Claude Sonnet 5.5 | Screenshot and UI judgement |
+| Tester | Claude Haiku 5.5 | Mostly running tests and reporting results |
+| Infra Verifier | Claude Haiku 5.5 | Read-only checks against a known list |
+
+Effort level is also set per agent. The dashboard tracks cost and success rate per agent, so these defaults can be adjusted with evidence: move an agent up a tier if it causes repeated failures, or down if it does fine.
 
 ### Guardrails (layered)
 
@@ -409,12 +433,10 @@ Escalations appear in the approval inbox and on the dashboard.
 
 ## 11. Open decisions
 
-1. **Merging approved docs:** approved specs, wireframes and the plan reach `dev` as a `docs/...` PR that you merge (as proposed here). Alternatively, they could live only on a long-lived `docs` branch.
-2. **Kubernetes packaging:** Helm or Kustomize for `deploy/`.
-3. **Pipeline identity:** confirm that the GitHub Actions OIDC identity, and its ACR push and AKS deploy roles, are created by the human's Terraform as part of the infra modules.
-4. **Terraform modules location:** which repo, and how the factory reads it (read-only clone or GitHub read token).
-5. **Environments:** only `dev` for now, with tfvars structured per environment for later.
-6. **Wireframe approval granularity:** the whole app at once, or per feature.
-7. **Model per agent:** the strongest model for every agent, or cheaper models for routine roles (e.g. Tester, Verifier).
-8. **Security tool set:** confirm or adjust Semgrep, Bandit, pip-audit, npm audit, gitleaks and Trivy.
-9. **Factory machine:** OS and available RAM/CPU, which determine the concurrency defaults.
+1. **Kubernetes packaging:** plain manifests, Kustomize or Helm for `deploy/`. Recommended: Kustomize.
+2. **Pipeline identity type:** OIDC federated credential (recommended, nothing secret stored) or a client secret.
+3. **Terraform modules location:** which repo, and how the factory reads it (read-only clone or GitHub read token).
+4. **Environments:** only `dev` for now, with tfvars structured per environment for later.
+5. **Wireframe approval granularity:** the whole app at once, or per feature.
+6. **Security tool set:** confirm or adjust Semgrep, Bandit, pip-audit, npm audit, gitleaks and Trivy.
+7. **Factory machine:** OS and available RAM/CPU, which determine the concurrency defaults.
