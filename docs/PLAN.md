@@ -25,7 +25,8 @@ A human approves every important step. AI agents **never** create Azure resource
 | Models | Chosen **per agent** to fit the work (see §5.1), not the strongest model everywhere. Configurable in the factory |
 | Approved docs | Approved specs, wireframes and plan reach `dev` as a `docs/...` PR that a human merges |
 | Kubernetes manifests | **Plain YAML** in `deploy/` for now. The `dev` pipeline sets the image tag at deploy time. Kustomize can be adopted later if more environments are added |
-| Pipeline credentials | Stored in the app repo's GitHub Actions settings (variables + secrets) by a human. Agents never see them |
+| Pipeline credentials | **GitHub OIDC federated credential**. A human adds the non-secret IDs to the app repo's GitHub Actions variables. No client secret is stored. Agents never see them |
+| Environments | **`dev` only** for now. tfvars are laid out per environment (`infra/dev.tfvars`) so more can be added later |
 | Generated app stack | React (Vite + TypeScript) frontend, FastAPI backend |
 | Hosting of generated apps | Azure native: AKS, images in ACR |
 | Repos | One GitHub repo per generated app. The user creates the empty repo and gives its name to the factory |
@@ -33,7 +34,7 @@ A human approves every important step. AI agents **never** create Azure resource
 | Database | Chosen by the agent per use case, approved by the human |
 | Auth | Entra ID or backend-managed auth, chosen per use case, approved by the human |
 | Secrets | Key Vault / workload identity / etc., chosen per use case in the spec |
-| Wireframes | Clickable HTML mockups, approved by the human |
+| Wireframes | Clickable HTML mockups, approved by the human **per feature** |
 | Terraform | Modules are maintained **outside** the factory. The factory has **read-only** access to them and writes only **tfvars + a report** |
 | Infra branch | tfvars and reports live on the `infra` branch of the app repo. `infra` never merges into `dev` or `main` |
 | Infra apply | A human always runs `terraform apply` |
@@ -129,8 +130,8 @@ Every gate has two outcomes: **Approve** or **Reject with feedback**. On rejecti
 - **Gate 2:** the human approves the specs, DB schemas and other components, or rejects them with feedback.
 
 **5. Wireframes** (UX agent)
-- Clickable HTML mockups for every screen in the approved features, in `docs/wireframes/`, viewable in the factory UI.
-- **Gate 3:** the human approves, or rejects with feedback.
+- Clickable HTML mockups for every screen in each approved feature, in `docs/wireframes/<feature-id>/`, viewable in the factory UI. A shared layout (navigation, header, styles) is reused across features.
+- **Gate 3 (per feature):** the human approves or rejects each feature's wireframes separately, with feedback. A rejection only sends that feature back to the UX agent; approved features move on.
 
 **6. Infrastructure inputs** (Infra agent)
 - Reads the external Terraform modules (read-only).
@@ -202,9 +203,10 @@ Every gate has two outcomes: **Approve** or **Reject with feedback**. On rejecti
   3. Push to ACR.
   4. Deploy to AKS.
 - The pipeline authenticates to Azure using values a **human** adds to the repo's GitHub Actions settings:
+  - Authentication uses a **GitHub OIDC federated credential** on an Azure identity (created by the human's Terraform), trusted only for the `dev` branch of the app repo. No client secret or password is stored.
   - **Variables** (not sensitive): `AZURE_CLIENT_ID`, `AZURE_TENANT_ID`, `AZURE_SUBSCRIPTION_ID`, ACR name, AKS cluster name, resource group.
-  - **Secrets** (sensitive): only needed if a client secret is used. Preferred: GitHub OIDC federated credentials, so no password is stored at all.
-- The factory's report lists exactly which variables and secrets are required. AI agents never hold these credentials.
+  - The identity needs only: AcrPush on the ACR and deploy rights on the AKS cluster/namespace.
+- The factory's infra report lists exactly which variables, roles and federated credential settings are required. AI agents never hold these credentials.
 
 **14. Human testing on `dev`**
 - The human tests using the Excel file and records the results.
@@ -434,9 +436,6 @@ Escalations appear in the approval inbox and on the dashboard.
 
 ## 11. Open decisions
 
-1. **Pipeline identity type:** OIDC federated credential (recommended, nothing secret stored) or a client secret.
-2. **Terraform modules location:** which repo, and how the factory reads it (read-only clone or GitHub read token).
-3. **Environments:** only `dev` for now, with tfvars structured per environment for later.
-4. **Wireframe approval granularity:** the whole app at once, or per feature.
-5. **Security tool set:** confirm or adjust Semgrep, Bandit, pip-audit, npm audit, gitleaks and Trivy.
-6. **Factory machine:** OS and available RAM/CPU, which determine the concurrency defaults.
+1. **Terraform modules location:** which repo, and how the factory reads it (read-only clone or GitHub read token).
+2. **Security tool set:** confirm or adjust Semgrep, Bandit, pip-audit, npm audit, gitleaks and Trivy.
+3. **Factory machine:** OS and available RAM/CPU, which determine the concurrency defaults.
