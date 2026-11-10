@@ -24,6 +24,7 @@ A human approves every important step. AI agents **never** create Azure resource
 | Agent engine | **Claude Agent SDK (Python)**, which is Claude Code as a library, called from the FastAPI backend, using the Claude API directly |
 | Models | Chosen **per agent** to fit the work (see §5.1), not the strongest model everywhere. Configurable in the factory |
 | Approved docs | Approved specs, wireframes and plan reach `dev` as a `docs/...` PR that a human merges |
+| Kubernetes manifests | **Plain YAML** in `deploy/` for now. The `dev` pipeline sets the image tag at deploy time. Kustomize can be adopted later if more environments are added |
 | Pipeline credentials | Stored in the app repo's GitHub Actions settings (variables + secrets) by a human. Agents never see them |
 | Generated app stack | React (Vite + TypeScript) frontend, FastAPI backend |
 | Hosting of generated apps | Azure native: AKS, images in ACR |
@@ -311,7 +312,7 @@ Effort level is also set per agent. The dashboard tracks cost and success rate p
 ├── CLAUDE.md                     # conventions all agents follow
 ├── frontend/                     # React + Vite + TypeScript
 ├── backend/                      # FastAPI (+ Alembic migrations)
-├── deploy/                       # Kubernetes manifests (Helm or Kustomize, TBD)
+├── deploy/                       # Kubernetes manifests (plain YAML)
 ├── docker-compose.yml            # local stack + emulators
 ├── tests/e2e/                    # Playwright end-to-end tests
 ├── .github/workflows/            # CI checks; dev build→scan→ACR→AKS pipeline
@@ -433,10 +434,9 @@ Escalations appear in the approval inbox and on the dashboard.
 
 ## 11. Open decisions
 
-1. **Kubernetes packaging:** plain manifests, Kustomize or Helm for `deploy/`. Recommended: Kustomize.
-2. **Pipeline identity type:** OIDC federated credential (recommended, nothing secret stored) or a client secret.
-3. **Terraform modules location:** which repo, and how the factory reads it (read-only clone or GitHub read token).
-4. **Environments:** only `dev` for now, with tfvars structured per environment for later.
-5. **Wireframe approval granularity:** the whole app at once, or per feature.
-6. **Security tool set:** confirm or adjust Semgrep, Bandit, pip-audit, npm audit, gitleaks and Trivy.
-7. **Factory machine:** OS and available RAM/CPU, which determine the concurrency defaults.
+1. **Pipeline identity type:** OIDC federated credential (recommended, nothing secret stored) or a client secret.
+2. **Terraform modules location:** which repo, and how the factory reads it (read-only clone or GitHub read token).
+3. **Environments:** only `dev` for now, with tfvars structured per environment for later.
+4. **Wireframe approval granularity:** the whole app at once, or per feature.
+5. **Security tool set:** confirm or adjust Semgrep, Bandit, pip-audit, npm audit, gitleaks and Trivy.
+6. **Factory machine:** OS and available RAM/CPU, which determine the concurrency defaults.
