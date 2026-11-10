@@ -60,8 +60,9 @@ A human approves every important step. AI agents **never** create Azure resource
 
 ```mermaid
 flowchart TD
-    A[0. Project setup<br/>user gives repo name] --> B[1. Requirements intake]
-    B --> C[2. Feature discovery]
+    A[0. Project setup<br/>user gives repo name] --> B[1. Requirements intake +<br/>business questions + summary]
+    B --> G0{{Gate 0: human confirms requirements summary}}
+    G0 --> C[2. Feature discovery]
     C --> G1{{Gate 1: human selects features}}
     G1 --> D[3. Clarifying questions]
     D --> E[4. Specs, DB schema, API contracts,<br/>acceptance criteria, test cases]
@@ -96,9 +97,15 @@ Every gate has two outcomes: **Approve** or **Reject with feedback**. On rejecti
   - applies branch protection (PRs required, human review required, no direct pushes to `dev`/`main`),
   - adds `CLAUDE.md`, the `docs/` and `factory/` folders, and the PR/issue templates.
 
-**1. Requirements intake**
-- The user describes the app in the factory UI as free text, optionally with attachments.
-- Saved as `docs/requirements.md`.
+**1. Requirements intake and understanding** (Product Analyst agent)
+- The user describes the app in the factory UI as free text, optionally with attachments. Saved as `docs/requirements.md`.
+- The agent asks a few short **business** questions (not technical ones yet) through the UI, for example:
+  - Who are the users, and what roles do they have?
+  - What main problem does the app solve?
+  - What is clearly out of scope?
+  - Is there an existing system or data to work with?
+- It writes `docs/requirements-summary.md`: problem, users and roles, goals, scope and out-of-scope, assumptions.
+- **Gate 0:** the human confirms the summary, or rejects it with corrections. This stops the feature list from being built on guesses.
 
 **2. Feature discovery** (Product Analyst agent)
 - Proposes a full feature list. Each feature has an ID, name, description, user value, priority (must/should/could), rough size, and dependencies.
@@ -264,11 +271,65 @@ New features re-enter at **stage 2** (or stage 4, if picked from the backlog):
 - Claude API key, GitHub token and Azure Reader credentials are kept in a local `.env` or the OS keychain.
 - They are never committed and never passed to generated apps.
 
+### 4.1 Execution model: how the factory runs
+
+Every stage is built from the same five pieces:
+
+| Piece | What it is | Example |
+|---|---|---|
+| **Orchestrator** | Ordinary backend code, not AI. Tracks each project's stage, starts the right agent, waits at gates, moves to the next stage | "Gate 1 approved → start the Architect agent" |
+| **Agent** | One Claude Code session (via the Agent SDK) with a role prompt, a model, allowed tools and a working folder | Product Analyst on Sonnet, working in the app repo's workspace |
+| **Skill** | A reusable instruction pack loaded for a task: steps, output format, templates, examples. Markdown files in the factory repo, editable without code changes | `feature-discovery`: how to break a use case into features + the exact `features.md` format |
+| **Tool** | Something the agent can do (three kinds, below) | Write a file, open a PR, ask the user a question |
+| **Hook** | Code that runs before/after every tool call, to block forbidden actions and log everything to the dashboard | Blocks `terraform apply`; logs "Developer edited `backend/auth.py`" |
+
+In short: **agents follow skills, use tools and stay within hooks; the orchestrator decides what runs next.**
+
+**Kinds of tools**
+1. **Built-in Claude Code tools:** read/write/edit files, search, shell commands (git, Docker, tests), web search.
+2. **MCP tools** (outside systems): GitHub (branches, PRs, issues), Azure read-only, Playwright (browser).
+3. **Custom factory tools** (written by us, so agents can talk to the factory):
+
+| Tool | Purpose |
+|---|---|
+| `ask_user(questions)` | Shows questions in the factory UI and waits for the answers |
+| `submit_for_approval(artifact)` | Sends work to a gate; it appears in the approval inbox |
+| `report_progress(message)` | Status updates for the dashboard |
+| `record_features(features)` | Saves the structured feature list so the UI can show a checklist |
+| `record_plan(plan)` | Saves the structured build plan (also written to `plan.yaml`) |
+
+**Where things live**
+- Agent definitions, skills, hooks and custom tools live in the **factory repo** (e.g. `.claude/agents/`, `.claude/skills/`).
+- Agents run with their working folder set to the **app repo workspace** (or a feature worktree), so their output lands in the app repo.
+
+**Stage → agent → skill → tools**
+
+| Stage | Agent (model) | Skill(s) | Main tools |
+|---|---|---|---|
+| 0. Project setup | None (orchestrator code) | — | git, GitHub API |
+| 1. Requirements understanding | Product Analyst (Sonnet) | `requirements-analysis` | `ask_user`, file write, `submit_for_approval` |
+| 2. Feature list | Product Analyst (Sonnet) | `feature-discovery` | file write, `record_features`, `submit_for_approval` |
+| 3–4. Tech questions + specs | Architect (Opus) | `clarify-tech`, `write-spec`, `db-schema`, `api-contract` | `ask_user`, file write, `submit_for_approval` |
+| 4. Test cases | QA (Sonnet) | `test-cases-from-criteria` | file write |
+| 5. Wireframes | UX Designer (Sonnet) | `html-wireframes` | file write, Playwright (check mockups work) |
+| 6. tfvars | Infra (Sonnet) | `tfvars-from-modules` | read modules (read-only), git push to `infra` |
+| 7. Infra check | Infra Verifier (Haiku) | `verify-azure` | Azure read-only MCP |
+| 8. Build plan | Planner (Sonnet) | `build-plan` | `record_plan`, Excel generator |
+| 9. Development | Developer (Opus) | `implement-feature`, `fix-issue` | files, shell, git, GitHub MCP |
+| 10. Testing | Tester (Haiku), UI/UX Tester (Sonnet) | `local-test`, `ui-review` | Docker, test runners, Playwright, GitHub issues |
+| 11. Security | Security (Sonnet) | `security-scan` | scanner commands, GitHub issues |
+
+**Example: the first AI stages**
+1. You click "New project", enter the repo name and the use case. The orchestrator bootstraps the repo (stage 0).
+2. The orchestrator starts the Product Analyst with the `requirements-analysis` skill. It asks a few business questions through `ask_user`, which appear in the UI, then writes `docs/requirements-summary.md` and submits it (Gate 0).
+3. After you confirm, the orchestrator restarts the Product Analyst with the `feature-discovery` skill. It writes `docs/features.md`, calls `record_features`, and submits (Gate 1).
+4. You tick the features you want; the rest go to the backlog. The orchestrator starts the Architect.
+
 ## 5. Agent roles and permissions
 
 | Agent | Stage(s) | Can do | Cannot do |
 |---|---|---|---|
-| Product Analyst | 2 | Read requirements; write the feature list | Touch code, infra or GitHub settings |
+| Product Analyst | 1, 2 | Ask business questions; write the requirements summary and the feature list | Touch code, infra or GitHub settings |
 | Architect | 3, 4, later features | Ask the user questions; write architecture, specs, schemas, OpenAPI | Write app code; access Azure |
 | QA (test author) | 4 | Write test cases from acceptance criteria | Change specs |
 | UX Designer | 5 | Write HTML mockups in `docs/wireframes/` | Write app code |
@@ -322,6 +383,7 @@ Effort level is also set per agent. The dashboard tracks cost and success rate p
 ├── .github/workflows/            # CI checks; dev build→scan→ACR→AKS pipeline
 ├── docs/
 │   ├── requirements.md
+│   ├── requirements-summary.md   # confirmed at Gate 0
 │   ├── decisions.md              # answers to clarifying questions
 │   ├── features.md               # proposed + selected + backlog
 │   ├── architecture.md
@@ -425,7 +487,7 @@ Escalations appear in the approval inbox and on the dashboard.
 | Phase | Scope | Outcome |
 |---|---|---|
 | **0. Skeleton** | Factory repo layout, FastAPI + React shell, SQLite, Agent SDK integration, event streaming, basic dashboard, guardrail hooks, local secrets config | Can run one agent and watch it live |
-| **1. Discovery → Specs** | Project setup (repo bootstrap + branch protection), intake, feature discovery, Gate 1, clarifying questions, specs/schemas/OpenAPI/test cases, Gate 2, rejection-with-feedback loop | Approved specs in the app repo |
+| **1. Discovery → Specs** | Project setup (repo bootstrap + branch protection), intake + business questions + summary, Gate 0, feature discovery, Gate 1, clarifying questions, specs/schemas/OpenAPI/test cases, Gate 2, rejection-with-feedback loop | Approved specs in the app repo |
 | **2. Wireframes** | HTML mockup generation, viewer in UI, Gate 3 | Approved clickable wireframes |
 | **3. Infra** | Read modules, tfvars + report on `infra`, Gate 4, read-only verification, Gate 5 | Verified Azure environment |
 | **4. Planning** | `plan.yaml`, Excel generator, Gate 6 | Approved build plan + Excel |
