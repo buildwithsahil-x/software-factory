@@ -486,7 +486,7 @@ Escalations appear in the approval inbox and on the dashboard.
 
 | Phase | Scope | Outcome |
 |---|---|---|
-| **0. Skeleton** | Factory repo layout, FastAPI + React shell, SQLite, Agent SDK integration, event streaming, basic dashboard, guardrail hooks, local secrets config | Can run one agent and watch it live |
+| **0. Skeleton** ✅ done | Factory repo layout, FastAPI + React shell, SQLite, Agent SDK integration, event streaming, basic dashboard, guardrail hooks, local secrets config | Can run one agent and watch it live |
 | **1. Discovery → Specs** | Project setup (repo bootstrap + branch protection), intake + business questions + summary, Gate 0, feature discovery, Gate 1, clarifying questions, specs/schemas/OpenAPI/test cases, Gate 2, rejection-with-feedback loop | Approved specs in the app repo |
 | **2. Wireframes** | HTML mockup generation, viewer in UI, Gate 3 | Approved clickable wireframes |
 | **3. Infra** | Read modules, tfvars + report on `infra`, Gate 4, read-only verification, Gate 5 | Verified Azure environment |

@@ -1,0 +1,5 @@
+{
+  "name": "factory",
+  "version": "0.1.0",
+  "description": "Skills used by Software Factory agents. One skill per stage task (feature discovery, spec writing, tfvars, testing, ...)."
+}
