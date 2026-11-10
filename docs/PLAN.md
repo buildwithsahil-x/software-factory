@@ -19,7 +19,7 @@ A human approves every important step. AI agents **never** create Azure resource
 
 | Area | Decision |
 |---|---|
-| Factory runtime | Local app, single user |
+| Factory runtime | Single-user app running on a **VM** (Linux recommended). CPU/RAM are scaled up as needed; concurrency limits are configurable |
 | Factory stack | React (Vite + TypeScript) frontend, FastAPI backend |
 | Agent engine | **Claude Agent SDK (Python)**, which is Claude Code as a library, called from the FastAPI backend, using the Claude API directly |
 | Models | Chosen **per agent** to fit the work (see §5.1), not the strongest model everywhere. Configurable in the factory |
@@ -43,6 +43,8 @@ A human approves every important step. AI agents **never** create Azure resource
 | Tests | Test cases come from the acceptance criteria **before or during** development, not after |
 | Loop limits | Max fix attempts and budgets. When a limit is reached, the agent escalates to the human |
 | Rejections | The human gives feedback, and the agent revises and resubmits |
+| Security tools | Semgrep, Bandit, pip-audit, npm audit, gitleaks, Trivy |
+| Terraform modules | **Not built yet.** They will be built separately, outside the factory, before phase 3 (see §12) |
 | Security | A dedicated security scanning agent: on every PR before the human merges to `dev`, and on the image before the ACR push |
 | Feature branch testing | Agents test each feature branch **locally** with Docker Compose and local emulators |
 | Human testing | Only on `dev`, deployed to AKS |
@@ -436,6 +438,34 @@ Escalations appear in the approval inbox and on the dashboard.
 
 ## 11. Open decisions
 
-1. **Terraform modules location:** which repo, and how the factory reads it (read-only clone or GitHub read token).
-2. **Security tool set:** confirm or adjust Semgrep, Bandit, pip-audit, npm audit, gitleaks and Trivy.
-3. **Factory machine:** OS and available RAM/CPU, which determine the concurrency defaults.
+None right now. New ones will be added here as they come up.
+
+## 12. Dependency: Terraform modules (built outside the factory)
+
+The modules don't exist yet. They are built and owned outside the factory, but the factory depends on them from **phase 3** onwards. Phases 0–2 can proceed without them.
+
+For the Infra agent to write correct tfvars and the Infra Verifier to check results, each module should provide:
+- a **README** describing what it creates and its naming rules,
+- **`variables.tf`** with a description, type, and validation where possible for every input,
+- **`outputs.tf`** with the resource names/IDs the verifier can check,
+- **version tags**, so the tfvars reference a known module version.
+
+Modules the generated apps are likely to need (to be confirmed when building them):
+- Resource group, networking (VNet/subnets)
+- ACR
+- AKS (with workload identity and OIDC issuer enabled)
+- Key Vault
+- Database: PostgreSQL Flexible Server / Azure SQL / Cosmos DB (one module each, chosen per app)
+- Storage account
+- Managed identities + role assignments (including the GitHub OIDC pipeline identity)
+- Log Analytics / monitoring
+
+**Factory access:** the factory gets **read-only** access to the modules repo (read-only GitHub token or read-only clone). It never edits the modules.
+
+## 13. Factory VM notes
+
+- Linux VM recommended, with Docker Engine. Start around 8 vCPU / 32 GB RAM and scale up as needed.
+- Concurrency (agents and Docker Compose stacks) is set in the factory's config, so it can be raised when the VM is upgraded.
+- **The factory UI must not be exposed to the internet.** Reach it via SSH tunnel, VPN or Azure Bastion, because it holds the Claude API key, GitHub token and Azure Reader credentials.
+- Factory secrets live on the VM only (environment file with restricted permissions, or Azure Key Vault read by the VM's identity).
+- Back up the factory's SQLite database and workspace folder, or keep the VM disk snapshotted.
