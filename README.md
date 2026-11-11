@@ -23,7 +23,7 @@ What the phase 0 skeleton includes:
 | Factory plugin with skills (one per stage task as stages are built) | `factory-plugin/` |
 | React dashboard: start runs, runs list, live activity feed | `frontend/` |
 
-## Running it (on the factory VM)
+## Running the phase 0 skeleton
 
 Requirements: Python 3.11+, Node 20+, git. Docker is needed from phase 5.
 
@@ -44,11 +44,7 @@ Requirements: Python 3.11+, Node 20+, git. Docker is needed from phase 5.
    npm run dev
    ```
 
-4. Open http://localhost:5173. On a remote VM, use an SSH tunnel rather than exposing the port:
-   ```bash
-   ssh -L 5173:localhost:5173 -L 8000:localhost:8000 <user>@<vm>
-   ```
-   The factory holds your API key and (later) GitHub and Azure credentials. Never expose it to the internet.
+4. Open http://localhost:5173. Keep both servers on `localhost`; don't expose them to your network, because the backend holds your API key.
 
 5. Pick the **Smoke Test** agent, give it a small task (for example *"Create hello.md with a short note, then try `terraform apply`"*), and watch the live activity feed. The `terraform apply` attempt shows up as a blocked guardrail event.
 
