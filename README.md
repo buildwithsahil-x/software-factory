@@ -1,14 +1,16 @@
 # Software Factory
 
-A locally run AI agent software factory. You describe an app, and the factory proposes features, writes specs and wireframes, prepares Azure infrastructure inputs, and builds, tests and security-scans each feature. A human approves every important step.
+An AI agent software factory, run by one person in Claude Code. You describe an app, and the factory proposes features, writes specs and wireframes, prepares Azure infrastructure inputs, and builds, tests and security-scans each feature. A human approves every important step.
 
 The full design is in [`docs/PLAN.md`](docs/PLAN.md).
 
 ## Status
 
-**Phase 0 (skeleton) is done.** You can start an agent run from the dashboard and watch everything it does live. Later phases add the actual factory stages (see the plan, §10).
+The factory is being built as a **Claude Code plugin** (slash commands, skills, subagents and hooks) in `factory-plugin/`. Phase 1 starts that work.
 
-What phase 0 includes:
+The `backend/` and `frontend/` folders are the **phase 0 app skeleton**: a dashboard and agent runtime built on the Claude Agent SDK. They are kept for an optional dashboard later (plan §10, phase 9). Their guardrail rules are reused by the plugin's hooks.
+
+What the phase 0 skeleton includes:
 
 | Piece | Where |
 |---|---|
