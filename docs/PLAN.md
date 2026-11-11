@@ -19,7 +19,7 @@ A human approves every important step. AI agents **never** create Azure resource
 
 | Area | Decision |
 |---|---|
-| How the factory runs | **Claude Code in your laptop's terminal**, single user. You run each stage with a slash command. Runs under a separate laptop user account that has only the factory's restricted logins (see §13) |
+| How the factory runs | **Claude Code in a cmd window on your Windows laptop**, single user. You run each stage with a slash command. Runs under a separate laptop user account that has only the factory's restricted logins (see §13) |
 | What the factory is | A **Claude Code plugin** in this repo: slash commands, skills, subagents, hooks and small helper scripts |
 | Orchestration | **You**, by running the next command. Each command checks that the earlier gates were approved before it starts |
 | Claude access | Claude API key (billed per use), set in the factory's laptop account |
@@ -273,7 +273,7 @@ New features re-enter at **stage 2** (`/features` again), or at stage 4 if picke
 ```
 
 **Factory secrets (in the factory's laptop account only)**
-- Claude API key, GitHub token and Azure Reader credentials are kept in the OS keychain or a file only the factory account can read. Your personal Azure and GitHub logins are not available to it (§13).
+- Claude API key, GitHub token and Azure Reader credentials are kept as user environment variables of the factory's Windows account or in Windows Credential Manager. Your personal Azure and GitHub logins are not available to it (§13).
 - They are never committed and never passed to generated apps.
 
 ### 4.1 Execution model: how the factory runs
@@ -457,7 +457,7 @@ Agents test each branch on their own isolated Docker Compose stack, using local 
 | AKS | Containers in Docker |
 
 Requirements on the laptop:
-- Docker Desktop (on Windows, with WSL2),
+- Docker Desktop for Windows (it uses WSL2 internally to run Linux containers; you don't work inside WSL2 yourself),
 - enough free RAM: roughly 4–8 GB per test stack (see §13),
 - you decide how many `/test` sessions to run at once.
 
@@ -504,7 +504,6 @@ A dashboard app (live feed across sessions, cost per feature, approval inbox) ca
 
 1. **Approval hook:** confirm in phase 1 that Claude Code's prompt hook sees `/approve` exactly as you typed it, so approvals are recorded by the hook and not by the model. If it doesn't, approvals will go through a small helper script you run yourself instead.
 2. **GitHub access for the factory account:** a GitHub token for `gh`, with permission to create branches, set branch protection, push feature branches and open PRs, but not to bypass protection. Needed from phase 1.
-3. **Laptop OS:** macOS, Windows (with WSL2) or Linux. This decides the setup steps for the separate factory account, Docker and the hook scripts.
 
 ## 12. Dependency: Terraform modules (built outside the factory)
 
@@ -530,12 +529,25 @@ Modules the generated apps are likely to need (to be confirmed when building the
 
 ## 13. Factory laptop notes
 
-**Software to install:** Claude Code, `git`, `gh`, `az`, Node, Python and Docker Desktop. On Windows, run everything inside WSL2 (Ubuntu); on macOS, run it natively.
+**Laptop:** Windows. You run Claude Code natively from a **cmd** window. WSL2 is not needed.
+
+**Software to install (in the factory's Windows account):**
+- Claude Code (native Windows install).
+- **Git for Windows.** Claude Code uses its Git Bash to run shell commands, so agents' commands (git, docker, test runners) run in Git Bash even though you type in cmd.
+- GitHub CLI (`gh`), Azure CLI (`az`), Node.js LTS, Python 3.11+.
+- Docker Desktop for Windows (it uses WSL2 internally to run Linux containers).
+- Playwright and the security scanners are installed per project by the commands that need them.
+
+**Windows-specific design rules for the plugin:**
+- **Hooks and helper scripts are written in Python**, not bash or PowerShell, so they run the same everywhere.
+- **The guardrail rules must recognise Windows forms of commands**, for example `az.cmd`, `terraform.exe`, `gh.exe`, and Windows paths like `C:\Users\...` and `..\`. The phase 0 rules handle Unix forms only, so this gets added (with tests) in phase 1.
+- File paths in skills and commands use forward slashes, which work in both Git Bash and Python on Windows.
+- Line endings: the plugin sets `.gitattributes` in app repos so generated files use LF, which keeps Docker and shell scripts working.
 
 **Machine size:** each Docker Compose test stack needs roughly 4–8 GB of RAM, so run one `/test` at a time on a 16 GB laptop, and two at most on 32 GB.
 
 **Keep the factory away from your personal logins.** On a laptop you are probably already logged in to Azure (`az login`) and GitHub (`gh`) as yourself, with full rights. Claude Code runs as the user who starts it, so agents could use those logins. That would bypass the real protection (Reader-only Azure, a GitHub token that cannot merge). The setup is:
-- **Recommended:** create a **separate user account on the laptop** just for the factory. In that account, log in only with the factory's restricted identities:
+- **Recommended:** create a **separate Windows user account** just for the factory, and open cmd as that user (sign in to it, or use `runas /user:<factory-user> cmd`). In that account, log in only with the factory's restricted identities:
   - the Azure Reader service principal,
   - the factory's GitHub token,
   - the factory's Claude API key.
@@ -545,7 +557,7 @@ Modules the generated apps are likely to need (to be confirmed when building the
 - Don't run the factory in your everyday account while logged in to Azure or GitHub as yourself.
 
 **Other notes:**
-- **Secrets:** keep the factory's credentials in the factory account only, in the OS keychain or a file only that account can read. Never commit them.
-- **Sleep and lid closing:** stop agent work. Keep the laptop awake and plugged in during long `/build` or `/test` runs. An interrupted session can be resumed in Claude Code.
+- **Secrets:** keep the factory's credentials in the factory account only: as user environment variables of that account, or in Windows Credential Manager. Never commit them.
+- **Sleep and lid closing:** stop agent work. Set Windows power settings so the laptop doesn't sleep while plugged in. Keep the laptop awake and plugged in during long `/build` or `/test` runs. An interrupted session can be resumed in Claude Code.
 - **Nothing is exposed to the network:** wireframes and test stacks run on `localhost` only.
 - **Backups:** the app repos live on GitHub. Back up the factory workspace folder and audit logs with your normal laptop backup.
